@@ -1,0 +1,19 @@
+#map {
+	margin-left:2%;
+	margin-top: 5%;
+	width: 90%;
+	height:50% !important;
+	border: 5px solid black;
+	border-radius: 1px;
+}
+#input-mapa {
+	margin-left: 25%;
+	margin-top: 5%;
+}
+#input-mapa input {
+	width: 50%;
+}
+#lista {
+	margin-left: 25%;
+	margin-top: 2%;
+}

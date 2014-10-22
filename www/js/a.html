@@ -1,0 +1,739 @@
+@extends ('header')
+@section('scripts')
+<script type="text/javascript"
+        src="http://maps.google.com/maps/api/js?sensor=false&amp;language=es&amp;libraries=places"></script>
+{{ HTML::script('assets/js/helper.js')}}
+{{ HTML::script('assets/js/combos/motivo.js')}}
+{{ HTML::script('assets/js/combos/justicia.js')}}
+{{ HTML::script('assets/js/combos/dependencia.js')}}
+{{ HTML::script('assets/js/combos/fuero.js')}}
+{{ HTML::script('maps/jquery.geocomplete.js') }}
+
+{{ HTML::script('maps/map.js') }}
+
+{{ HTML::script('assets/js/datepicker_espanish.js') }}
+
+
+{{ HTML::style('maps/css/styles.css', array('media' => 'screen')) }}
+
+<script>
+var mapaCoordenadas = [];
+
+//@if(!empty($datosLatLon))
+//    mapaCoordenadas = {{$datosLatLon}};
+//@endif
+
+mapa.Dibujar({{ $datosLatLon or '{}' }});
+var files = new Array();//Variable global para almacenar la data de archivos
+$(function () {
+
+    var f = new Date();
+    var fecha_actual = f.getDate() + "/" + (f.getMonth() + 1) + "/" + f.getFullYear();
+    var CantPersonal = 0;
+    var CantCustodiados = 0;
+
+    $(".fecha").datepicker({
+        changeMonth: true,
+        changeYear: true,
+        dateFormat: "dd/mm/yy",
+        buttonImageOnly: true
+    });
+
+    $("#desde").datepicker({
+        defaultDate: "+1w",
+        changeMonth: true,
+
+        dateFormat: "dd/mm/yy",
+        onClose: function (selectedDate) {
+            $("#hasta").datepicker("option", "minDate", selectedDate);
+        }
+    });
+    $("#hasta").datepicker({
+        defaultDate: "+1w",
+        changeMonth: true,
+        minDate: fecha_actual,
+        dateFormat: "dd/mm/yy"
+
+    });
+    $("#fuero").change(function () {
+        $.ajax({
+            type: 'POST',
+            url: '{{ Request::root() }}/custodias/darComboJusticias',
+            data: 'nro_fuero=' + $("#fuero").val(),
+            success: function (respuesta) {
+
+                $("#justicia").html(respuesta);
+            }
+        });
+
+    });
+
+
+    $(".fuerza_cumplimenta").click(function (event) {
+        Dependencia($(this));
+
+    }).each(function (event) {
+        Dependencia($(this));
+    });
+
+    $("#agregar_personal").click(function (event) {
+        CantPersonal++;
+        $.ajax({
+            type: 'POST',
+            url: '{{ Request::root() }}/custodias/addpersonal',
+            data: 'i=' + CantPersonal,
+            success: function (html) {
+                $("#datos_personal").append(html);
+            }
+        });
+
+
+    });
+
+
+    $("#agregar_custodiado").click(function (event) {
+        CantCustodiados++;
+        $.ajax({
+            type: 'POST',
+            url: '{{ Request::root() }}/custodias/addcustodiado',
+            data: 'i=' + CantCustodiados,
+            success: function (html) {
+                $(".datos_custodiado").append(html);
+            }
+        });
+
+
+    });
+    $('.datos_custodiado').on("click", ".eliminar_custodiado", function (event) {
+        event.preventDefault();
+        var id = $(this).attr("data-id-custodiado");
+        $("div[data-id-div-custodiado='" + id + "']").remove();
+
+
+    });
+    $('#datos_personal').on("click", ".eliminar_personal", function (event) {
+        event.preventDefault();
+        var id = $(this).attr("data-id-personal");
+        $("div[data-div-personal='" + id + "']").remove();
+
+    });
+
+    function combo() {
+
+        $(".datos_custodiado").on("change", ".funcionario", function () {
+
+            var value = $(this).val();
+            var idCustodiado = $(this).attr("data-id_custodiado");
+            funcionario(value, idCustodiado);
+        });
+    }
+
+    function Dependencia(obj) {
+
+        var check = obj.is(":checked");
+
+        var combo = "#dependencia_" + obj.attr("data-combo");
+
+        if (check) {
+            $(combo).removeAttr("disabled");
+        } else {
+            $(combo).attr("disabled", "disabled");
+        }
+    }
+
+    function funcionario(value, idCustodiado) {
+        var div = $("div[data-id_custodiado_poder='" + idCustodiado + "']");
+        var select = div.children('select');
+        if (value == 1) {
+            div.show('slow');
+            select.removeAttr('disabled');
+        } else {
+            div.hide('slow')
+            select.attr('disabled', 'disabled');
+        }
+
+    }
+
+    function showFuncionario() {
+        $(".funcionario").each(function (index) {
+            var value = $(this).val();
+            var idCustodiado = $(this).attr("data-id_custodiado");
+            funcionario(value, idCustodiado);
+        });
+    }
+    $('input[type=file]').change(function(event){
+        files = event.target.files;
+    });
+
+    $("#enviar_form").click(function (event) {
+
+        event.preventDefault();
+        $("#lista_errores").html("");
+        $("#msg_errores").hide();
+
+        var dataFile     = new FormData();
+        var datosFrm = $("#frm_custodia");
+        var datos = datosFrm.serializeArray();
+
+        $.each(files, function (key, value) {
+            dataFile.append("escaneo_oficio", value);
+        });
+
+        $.each(datos, function (key, object) {
+            dataFile.append(object.name, object.value);
+        });
+
+        $.ajax({
+            type: 'POST',
+            url: '{{ route("custodias.validate") }}',
+            data: dataFile,
+            cache: false,
+            processData: false,
+            contentType: false,
+            success: function (data) {
+
+                if (data != "pass") {
+                    var aData = jQuery.parseJSON(data);
+                    var custodias = aData;
+
+                    var contenedorErrores = $("#lista_errores");
+                    $("#msg_errores").show();
+                    $('html, body').stop().animate({ scrollTop: 0 }, 500);
+
+                    $.each(custodias, function (key, index) {
+                        $.each(index, function (llave, mensaje) {
+                            contenedorErrores.append("<li>" + mensaje + "</li>");
+                        });
+                    });
+
+                    return;
+                }
+
+                var url = datosFrm.attr('action');
+
+                //Agrega al dataFile los datos de las coordenadas
+                //para poder enviar por ajax
+
+                var i = 0;
+
+                $.each(mapaCoordenadas,function(key,value){
+
+                    dataFile.append("coordenadas["+i+"][lat]",value.lat);
+                    dataFile.append("coordenadas["+i+"][lng]",value.lng);
+                    dataFile.append("coordenadas["+i+"][objetivo_direccion]",value.objetivo_direccion);
+
+                    i++;
+
+                });
+                var method = datosFrm.find('input[name="_method"]').val() || "POST";
+                console.log(url);
+                $.ajax({
+                    data: dataFile,
+                    url: url,
+                    type: "POST",
+                    cache: false,
+                    processData: false,
+                    contentType: false,
+                    success: function (response) {
+                        console.log(response);
+                        if(response.proceso)
+                        {
+                            window.location.href = "{{ URL::route('custodias.index') }}";
+                        }else
+                        {
+                            alert('No se pudo guardar el formulario');
+                        }
+
+
+                    }
+                });
+
+
+            }
+        });
+
+
+    });
+
+
+    $("#recibido_org_publico").change(function (event) {
+        recibidoOrgPublico();
+    });
+    $(".datos_custodiado").on("change", ".estado_procesal", function (event) {
+        var id_custodiado = $(this).attr("data-id-custodiado");
+        var div = $("div[data-div-custodiado='" + id_custodiado + "']");
+        if ($(this).val() == 3) {
+            if ( {{ Auth::user()->testigo }} == 1 ){
+            div.show('slow');
+            div.children().children(":input").each(function () {
+                $(this).removeAttr("disabled");
+                $(this).attr("required", "required");
+
+            });
+
+        }
+        else
+        {
+            div.hide('slow');
+            div.children().children(":input").each(function () {
+                $(this).removeAttr("required");
+                $(this).attr("disabled", "disabled");
+
+            });
+        }
+    }
+    else
+    {
+        div.show('slow');
+        div.children().children(":input").each(function () {
+            $(this).removeAttr("disabled");
+            $(this).attr("required", "required");
+
+        });
+    }
+});
+
+
+showFuncionario();
+recibidoOrgPublico();
+combo();
+
+$("#fuerza_recibe").change(function () {
+    cargarDependencias();
+});
+
+/**
+ * Funciones para mapear
+ */
+var places = new Array();
+
+$("#geocomplete").geocomplete({
+    details: "form",
+    location:"Mexico 12,Buenos Aires",
+    types: ["geocode", "establishment"],
+    scrollwheel:true
+});
+
+$("#marcar").click(function(){
+    event.preventDefault();
+    var direccion  = $("#geocomplete").val();
+    var lat   = $("#lat").val();
+    var lng   = $("#lng").val();
+    var location=[lat,lng];
+    var place = {lat:lat,lng:lng,objetivo_direccion:direccion};
+
+    mapaCoordenadas.push(place);//Variable que luego sera utilizada para enviar por AJAX al servidor
+
+    mapa.addMarker(place)
+});
+
+
+});//FIN &(function(){});
+
+function cargarDependencias() {
+    var id_fuerza = $("#fuerza_recibe").val();
+
+    $.ajax({
+        type: 'POST',
+        url: '{{ route("custodias.cargar_dep") }}',
+        data: 'id=' + id_fuerza,
+        success: function (sOption) {
+            $("#cod_dependencia option").remove();
+            $.each(sOption, function (index, value) {
+                $("#cod_dependencia").append('<option value="' + index + '">' + value + '</option>');
+
+            });
+
+        }
+
+    });
+
+
+}
+
+function recibidoOrgPublico() {
+
+    var organismoPublico = $("#recibido_org_publico");
+
+    if (organismoPublico.is(':checked')) {
+        $(".organismo_publico").removeAttr("disabled");
+        $("#cod_dependencia").attr("disabled", "disabled");
+        $("#fuerza_recibe").attr("disabled", "disabled");
+    } else {
+        $("#cod_dependencia").removeAttr("disabled");
+        $("#fuerza_recibe").removeAttr("disabled");
+        $(".organismo_publico").attr("disabled", "disabled");
+    }
+}
+</script>
+@stop
+
+
+@section ('title') Agregar una custodia @stop
+{{ Form::model(isset($custodias)?$custodias:null,$form_data, array("class"=>"frm_custodia",'role' => 'form','novalidate'=>'novalidate')) }}
+@section ('content')
+
+<div class="alert alert-danger" style="margin-top: 5px;display: none" id="msg_errores">
+    <button type="button" class="close" data-dismiss="alert">&times;</button>
+    <strong>Por favor corrige los siguentes errores:</strong>
+    <ul id="lista_errores">
+
+    </ul>
+</div>
+
+
+<ul class="nav nav-tabs">
+    <li class="active">
+        <a href="#datos_custodia" data-toggle="tab">Datos Custodia</a>
+    </li>
+    <li>
+        <a href="#persona_custodia" data-toggle="tab">Datos Persona a Custodiar</a>
+    </li>
+    <li>
+        <a href="#fza_cumplimenta" data-toggle="tab">Fza Que Cumplimenta</a>
+    </li>
+    <li>
+        <a href="#personal_cumplimenta" data-toggle="tab">Personal que Cumplimenta</a>
+    </li>
+    <li>
+        <a href="#otros" data-toggle="tab">Otros</a>
+    </li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane active" id="datos_custodia">
+    <br>
+
+    <div class="row">
+
+        <div class="form-group col-md-4">
+            {{ Form::label('implantacion_custodia', 'ImplantaciÃ³n') }}
+            {{ Form::checkbox('implantacion_custodia',1) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('referendum', 'Referendum') }}
+            {{ Form::text('referendum',null,array('class' => 'form-control')); }}
+        </div>
+
+    </div>
+    <div class="row">
+
+        <div class="form-group col-md-4">
+            {{ Form::label('recibido_org_publico', 'Recibido Por Otro Organismo PÃºblico') }}
+            {{ Form::checkbox('recibido_org_publico',1) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('organismo_publico', 'Organismo PÃºblico') }}
+            {{ Form::text('organismo_publico',null,array('class' => 'form-control
+            organismo_publico','disabled'=>'disabled')); }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('fecha_organismo_publico', 'Fecha') }}
+            {{ Form::text('fecha_organismo_publico',$fecha_actual,array('class' => 'form-control organismo_publico
+            fecha','disabled'=>'disabled')); }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('nota_organismo_publico', 'Nota Organismo Publico') }}
+            {{ Form::text('nota_organismo_publico',null,array('class' => 'form-control
+            organismo_publico','disabled'=>'disabled')); }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('fuerza_recibe', 'Fuerza que recibe el Oficio') }}
+            {{ Form::select('fuerza_recibe', $combo_fuerzas,null,array('class' => 'form-control')); }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('cod_dependencia', 'Dependencia') }}
+            {{ Form::select('cod_dependencia',$combo_dependencias,null,array('class' => 'form-control')) }}
+            {{ $errors->first('cod_dependencia') }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('nro_causa', 'Nro de Causa') }}
+            {{ Form::text('nro_causa', null, array('placeholder' => 'Ingrese el nro de causa', 'class' =>
+            'form-control')) }}
+            {{ $errors->first('nro_causa') }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('nro_sumario', 'Nro de sumario') }}
+            {{ Form::text('nro_sumario', null, array('placeholder' => 'Ingrese el nro de sumario', 'class' =>
+            'form-control')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('autos', 'Autos') }}
+            {{ Form::text('autos', null, array('placeholder' => 'Ingrese los autos', 'class' => 'form-control')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('nro_oficio', 'Nro de Oficio') }}
+            {{ Form::text('nro_oficio', null, array('placeholder' => 'Ingrese el nro de oficio', 'class' =>
+            'form-control')) }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('fecha_oficio', 'Fecha de Oficio') }}
+            {{ Form::text('fecha_oficio', null, array('placeholder' => 'Seleccione la fecha de oficio', 'class'
+            => 'form-control fecha', 'readonly' => 'readonly')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('fecha_recepcion_oficio', 'Fecha de Recepcion de Oficio') }}
+            {{ Form::text('fecha_recepcion_oficio', null, array('placeholder' => 'Seleccione la fecha de recepciÃ³n',
+            'class' => 'form-control fecha', 'readonly' => 'readonly')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('fuero_min_publicos', 'Fueros o Ministerio PÃºblico') }} <a data-toggle="modal" data-target="#fueroModal"> Cargar Fuero </a>
+            {{ Form::select('fuero_min_publicos', $combo_fueros,null,array('placeholder' => 'Seleccione el juzgado',
+            'class' =>
+            'form-control')) }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('justicia', 'Justicia') }} <a data-toggle="modal" data-target="#justiciaModal"> Cargar Justicia </a>
+            {{ Form::select('justicia', $combo_justicia,null,array('placeholder' => 'Seleccione', 'class' => 'form-control')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('desde', 'Desde') }}
+            {{ Form::text('desde',null, array('placeholder' => 'Seleccione la fecha desde',
+            'class' => 'form-control', 'readonly' => 'readonly')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('hasta', 'Hasta') }}
+            {{ Form::text('hasta', null, array('placeholder' => 'Seleccione la fecha hasta', 'class' =>
+            'form-control', 'readonly' => 'readonly')) }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('custodia', 'Custodia') }}
+            {{ Form::checkbox('custodia', 1) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('consigna', 'Consigna') }}
+            {{ Form::checkbox('consigna', 1) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('recorrida', 'Recorridas') }}
+            {{ Form::checkbox('recorridas', 1) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('boton_panico', 'Boton Anti Panico') }}
+            {{ Form::checkbox('boton_panico', 1) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('traslado', 'Traslados') }}
+            {{ Form::checkbox('traslado', 1) }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('fecha_desde_autorizada', 'Fecha Desde Autorizada') }}
+            {{ Form::text('fecha_desde_autorizada', null, array('placeholder' => 'Seleccione la fecha desde',
+            'class' => 'form-control fecha', 'readonly' => 'readonly')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('fecha_hasta_autorizada', 'Fecha Hasta Autorizada') }}
+            {{ Form::text('fecha_hasta_autorizada', null, array('placeholder' => 'Seleccione la fecha hasta',
+            'class' => 'form-control fecha', 'readonly' => 'readonly')) }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('motivo', 'Motivo') }}<a data-toggle="modal" data-target="#motivoModal"> Cargar Motivo </a>
+
+            {{ Form::select('motivo',$motivos,null,array('placeholder' => 'Seleccione', 'class' => 'form-control')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('escaneo_oficio', 'Escaneo del Oficio') }}
+            {{ Form::file('escaneo_oficio', null, array('placeholder' => 'Ingrese el motivo', 'class' =>
+            'form-control')) }}
+            {{ $errors->first('escaneo_oficio') }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4 ">
+            <input id="geocomplete" type="text" class="form-control" placeholder="Ingrese una direccion..."/>
+        </div>
+        <div class="form-group col-md-4 ">
+            <button class="btn btn-primary" id="marcar">
+                <i class="glyphicon glyphicon-map-marker" style="margin-right:5px"></i>Marcar en el Mapa
+            </button>
+
+            <input name="lat" type="hidden" id="lat" type="text" value="">
+            <input name="lng" type="hidden" id="lng" type="text" value="">
+
+        </div>
+
+        <div id="map"></div>
+        <!--   <div id="lista">
+                <ul>
+                    @if (isset($ObjetivosDireccion))
+
+                    @foreach($ObjetivosDireccion as $key => $value)
+                    <li>{{ $value->objetivo_direccion }}</li>
+                    @endforeach
+                    @endif
+                </ul>
+            </div> -->
+    </div>
+</div>
+
+<!-- -->
+<div class="tab-pane" id="persona_custodia">
+    <br>
+
+    <div class="datos_custodiado">
+
+        @if (isset($PersonasCustodiadas))
+        @foreach ($PersonasCustodiadas as $datos)
+        @include('formularios.custodiado',$datos)
+        @endforeach
+        @else
+        @include('formularios.custodiado',array("i"=>0))
+        @endif
+
+    </div>
+    <div class="row" id="append_custodiados">
+
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::button('Agregar Otro', array('type' => 'button', 'class' => 'btn','id'=>'agregar_custodiado')) }}
+        </div>
+    </div>
+</div>
+<div class="tab-pane" id="fza_cumplimenta">
+    <br>
+
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('fuerza_cumplimenta', 'Fuerza que cumplimenta') }}
+            <a data-toggle="modal" data-target="#dependenciaModal"> Cargar Dependencia </a>
+            <div class="checkbox">
+                <label> {{ Form::checkbox('gna_cump',1,null,array("class"=>"fuerza_cumplimenta",'data-combo'=>"gna" ))}}
+                    Gendarmeria Nacional </label>
+            </div>
+            <div class="checkbox">
+                <label> {{ Form::checkbox('pfa_cump',1,null,array("class"=>"fuerza_cumplimenta",'data-combo'=>"pfa" ))}}
+                    Policia Federal </label>
+            </div>
+            <div class="checkbox">
+                <label> {{ Form::checkbox('pna_cump',1,null,array("class"=>"fuerza_cumplimenta",'data-combo'=>"pna" ))}}
+                    Prefectura Naval </label>
+            </div>
+            <div class="checkbox">
+                <label> {{ Form::checkbox('psa_cump',1,null,array("class"=>"fuerza_cumplimenta",'data-combo'=>"psa" ))}}
+                    Policia Aeroportuaria </label>
+            </div>
+        </div>
+        <div class="form-group col-md-4">
+
+            {{ Form::label('dependencia_cumplimenta', 'Dependencia que cumplimenta, GNA') }}
+            {{ Form::select('gna_dep', $combo_dependencias_gna,null,array('class' =>
+            'form-control dependencia','id'=>'dependencia_gna','disabled'=>'disabled')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('dependencia_cumplimenta', 'Dependencia que cumplimenta, PFA') }}
+            {{ Form::select('pfa_dep', $combo_dependencias_pfa,null,array('class' =>
+            'form-control dependencia','id'=>'dependencia_pfa','disabled'=>'disabled')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('dependencia_cumplimenta', 'Dependencia que cumplimenta, PNA') }}
+            {{ Form::select('pna_dep', $combo_dependencias_pna,null,array('class' =>
+            'form-control dependencia','id'=>'dependencia_pna','disabled'=>'disabled')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('dependencia_cumplimenta', 'Dependencia que cumplimenta, PSA') }}
+            {{ Form::select('psa_dep', $combo_dependencias_psa,null,array('class' =>
+            'form-control dependencia','id'=>'dependencia_psa','disabled'=>'disabled')) }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('capacidad_cumplimiento', 'Capacidad para el cumplimiento') }}
+            {{ Form::select('capacidad_cumplimiento', $combo_capacidad_cumplimiento,null,array('placeholder' =>
+            'Seleccione la capacidad de cumplimiento', 'class' => 'form-control')); }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('estado', 'Estado') }}
+            {{ Form::select('estado', $combo_estado,null,array('placeholder' => 'Seleccione el estado', 'class' =>
+            'form-control')); }}
+        </div>
+    </div>
+
+</div>
+<div class="tab-pane" id="personal_cumplimenta">
+    <br>
+
+    <div id="datos_personal">
+        @if (isset($PersonalCumplimenta))
+
+        @foreach ($PersonalCumplimenta as $datos)
+        @include('formularios.personal_cumplimenta',$datos)
+        @endforeach
+        @else
+        @include('formularios.personal_cumplimenta',array("i"=>0))
+        @endif
+
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::button('Agregar Otro', array('type' => 'button', 'class' => 'btn','id'=>'agregar_personal')) }}
+        </div>
+    </div>
+</div>
+
+<div class="tab-pane" id="otros">
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('modificaciones_servicio', 'Modificaciones del servicio') }}
+            {{ Form::text('modificaciones_servicio', null, array('placeholder' => 'Ingrese las modificaciones de
+            servicio','class' => 'form-control')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('autorizacion', 'AutorizaciÃ³n') }}
+            {{ Form::select('autorizacion', $combo_si_no,null,array('class' => 'form-control')); }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('nota_a_la_fuerza', 'Notas a la fuerza') }}
+            {{ Form::text('nota_a_la_fuerza', null, array('placeholder' => 'Ingrese las notas a la fuerza','class' =>
+            'form-control')) }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="form-group col-md-4">
+            {{ Form::label('nota_a_juzgado', 'Notas a juzgados') }}
+            {{ Form::text('nota_a_juzgado', null, array('placeholder' => 'Ingrese el las notas a juzgados','class' =>
+            'form-control')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('observaciones', 'Observaciones') }}
+            {{ Form::text('observaciones', null, array('placeholder' => 'Ingrese las observaciones','class' =>
+            'form-control')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('nota_a_fiscalia', 'Notas a fiscalias') }}
+            {{ Form::text('nota_a_fiscalia', null, array('placeholder' => 'Ingrese las notas a fiscalias','class' =>
+            'form-control')) }}
+        </div>
+        <div class="form-group col-md-4">
+            {{ Form::label('notas_varias', 'Notas Varias') }}
+            {{ Form::text('notas_varias', null, array('placeholder' => 'Ingrese otras notas','class' => 'form-control'))
+            }}
+        </div>
+    </div>
+</div>
+</div>
+<div class="row">
+    <div class="form-group col-md-4">
+        {{ Form::button('Guardar', array('type' => 'submit', 'class' => 'btn btn-primary','id'=>'enviar_form')) }}
+    </div>
+</div>
+{{ Form::close() }}
+@include('modals.motivo')
+@include('modals.justicia')
+@include('modals.dependencia')
+@include('modals.fuero')
+
+@stop
